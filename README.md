@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner.png" alt="vibekit-mcp" width="100%">
+</p>
+
 # vibekit-mcp
 
 MCP server for [VibeKit](https://vibekit.bot) — manage AI-powered apps as native tools in Claude Desktop, Cursor, Windsurf, and any MCP-compatible client.
