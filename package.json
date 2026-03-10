@@ -1,16 +1,42 @@
 {
   "name": "vibekit-mcp",
-  "version": "0.3.0",
-  "description": "MCP server for VibeKit — manage AI-powered apps as tools in Claude Desktop, Cursor, Windsurf, etc.",
+  "version": "0.4.0",
+  "description": "MCP server for VibeKit — deploy apps, manage hosting, chat with AI agents, and run coding tasks from Claude Desktop, Cursor, and other MCP clients.",
   "main": "dist/index.js",
-  "bin": { "vibekit-mcp": "./dist/index.js" },
-  "files": ["dist/", "README.md"],
-  "scripts": { "build": "tsc", "prepublishOnly": "npm run build" },
-  "keywords": ["mcp", "vibekit", "claude", "cursor", "ai", "agent", "deploy", "model-context-protocol"],
-  "author": "VibeKit",
+  "bin": {
+    "vibekit-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "vibekit",
+    "deploy",
+    "hosting",
+    "ai-agent",
+    "coding",
+    "cursor",
+    "claude-desktop"
+  ],
+  "author": "609.sol",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/609NFT/vibekit.git",
+    "directory": "packages/mcp-server"
+  },
   "homepage": "https://vibekit.bot",
-  "repository": { "type": "git", "url": "https://github.com/vibekit-apps/vibekit-mcp" },
-  "dependencies": { "@modelcontextprotocol/sdk": "^1.0.0" },
-  "devDependencies": { "typescript": "^5.0.0", "@types/node": "^22.0.0" }
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
 }

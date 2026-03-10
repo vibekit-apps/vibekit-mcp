@@ -2,362 +2,790 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  Tool,
+} from "@modelcontextprotocol/sdk/types.js";
 
 const API_BASE = process.env.VIBEKIT_API_URL || "https://vibekit.bot/api/v1";
 const API_KEY = process.env.VIBEKIT_API_KEY || "";
+const SKILLS_REGISTRY = "https://raw.githubusercontent.com/vibekit-apps/skills-registry/main";
+
+// Skills cache (TTL: 5 minutes)
+let skillsCache: { manifest: unknown; fetchedAt: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000;
 
 if (!API_KEY) {
-  console.error("VIBEKIT_API_KEY is required. Get one at https://app.vibekit.bot/settings");
+  console.error("Error: VIBEKIT_API_KEY environment variable is required");
+  console.error("Get one at https://t.me/the_vibe_kit_bot with /apikey command");
   process.exit(1);
 }
 
-// ── API Helper ──────────────────────────────────────────────────────────────
-
-async function api(method: string, path: string, body?: any): Promise<{ ok: boolean; data?: any; error?: string }> {
+// API helper
+async function apiRequest(
+  method: string,
+  path: string,
+  body?: Record<string, unknown>
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (res.status === 204) return { ok: true, data: {} };
+
     const data = await res.json();
-    if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+    
+    if (!res.ok) {
+      return { ok: false, error: data.error || `HTTP ${res.status}` };
+    }
+    
     return { ok: true, data };
-  } catch (err: any) {
-    return { ok: false, error: err.message || "Request failed" };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
 
-// ── Tool Definitions ────────────────────────────────────────────────────────
-
-const tools = [
-  // Account
-  {
-    name: "vibekit_account",
-    description: "Get account info: plan, balance, session usage.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-
-  // Apps
+// Tool definitions
+const tools: Tool[] = [
+  // Hosting & Apps
   {
     name: "vibekit_list_apps",
-    description: "List all your hosted apps with status and URLs.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "vibekit_app_info",
-    description: "Get details about a specific app.",
+    description: "List all hosted apps in your VibeKit account.",
     inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug or full UUID" } },
-      required: ["slug"],
+      type: "object",
+      properties: {},
     },
   },
-
-  // Agent Chat
+  {
+    name: "vibekit_get_app",
+    description: "Get details about a specific hosted app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to get details for",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_create_app",
+    description: "Create a new hosted app from a template.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        template: {
+          type: "string",
+          description: "Template to use (e.g., 'nextjs', 'react', 'express')",
+        },
+        subdomain: {
+          type: "string",
+          description: "Subdomain for the app (will be deployed to {subdomain}.vibekit.bot)",
+        },
+      },
+      required: ["template", "subdomain"],
+    },
+  },
+  {
+    name: "vibekit_deploy",
+    description: "Deploy a GitHub repo to VibeKit hosting.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: {
+          type: "string",
+          description: "GitHub repo in format 'owner/repo'",
+        },
+        subdomain: {
+          type: "string",
+          description: "Subdomain for the app (will be deployed to {subdomain}.vibekit.bot)",
+        },
+      },
+      required: ["repo", "subdomain"],
+    },
+  },
+  {
+    name: "vibekit_redeploy",
+    description: "Redeploy an existing hosted app to update it with latest code.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to redeploy",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_app_logs",
+    description: "Get application logs for debugging and monitoring.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to get logs for",
+        },
+        lines: {
+          type: "number",
+          description: "Number of log lines to retrieve (default: 100)",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_restart_app",
+    description: "Restart a hosted app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to restart",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_stop_app",
+    description: "Stop a hosted app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to stop",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_start_app",
+    description: "Start a stopped hosted app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to start",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_app_env",
+    description: "Get environment variables for a hosted app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to get environment variables for",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  {
+    name: "vibekit_set_env",
+    description: "Set environment variables for a hosted app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to set environment variables for",
+        },
+        vars: {
+          type: "object",
+          description: "Object of key-value pairs to set as environment variables",
+        },
+      },
+      required: ["appId", "vars"],
+    },
+  },
+  {
+    name: "vibekit_delete_app",
+    description: "Delete a hosted app permanently.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to delete",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  // AI Agent
   {
     name: "vibekit_chat",
-    description: "Send a message to an app's AI agent. The agent can modify code, deploy, fix bugs, add features.",
+    description: "Chat with an app's AI agent. The agent can read, write, and modify the app's code.",
     inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        message: { type: "string", description: "Message for the AI agent" },
+        appId: {
+          type: "string",
+          description: "The app ID to chat with the agent for",
+        },
+        message: {
+          type: "string",
+          description: "Message to send to the AI agent",
+        },
       },
-      required: ["slug", "message"],
+      required: ["appId", "message"],
     },
   },
   {
     name: "vibekit_agent_status",
-    description: "Get the AI agent's status and model info for an app.",
+    description: "Get the status of an app's AI agent.",
     inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-
-  // Deploy
-  {
-    name: "vibekit_deploy",
-    description: "Trigger a redeploy for an app.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_deploys",
-    description: "List deploy history for an app.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_rollback",
-    description: "Rollback an app to a previous deploy.",
-    inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        deployId: { type: "string", description: "Deploy ID to rollback to" },
+        appId: {
+          type: "string",
+          description: "The app ID to get agent status for",
+        },
       },
-      required: ["slug", "deployId"],
+      required: ["appId"],
     },
   },
-
-  // Logs
   {
-    name: "vibekit_logs",
-    description: "Get recent logs for an app.",
+    name: "vibekit_agent_history",
+    description: "Get chat history with an app's AI agent.",
     inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        lines: { type: "number", description: "Number of lines (default 50)" },
+        appId: {
+          type: "string",
+          description: "The app ID to get agent history for",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of messages to return (default: 20)",
+        },
       },
-      required: ["slug"],
+      required: ["appId"],
     },
   },
-
-  // Container control
-  {
-    name: "vibekit_start",
-    description: "Start an app's container.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_stop",
-    description: "Stop an app's container.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_restart",
-    description: "Restart an app's container.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-
-  // Env vars
-  {
-    name: "vibekit_env_list",
-    description: "List environment variables for an app.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        reveal: { type: "boolean", description: "Show real values instead of masked" },
-      },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_env_set",
-    description: "Set an environment variable.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        key: { type: "string", description: "Variable name" },
-        value: { type: "string", description: "Variable value" },
-      },
-      required: ["slug", "key", "value"],
-    },
-  },
-  {
-    name: "vibekit_env_delete",
-    description: "Delete an environment variable.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        key: { type: "string", description: "Variable name to delete" },
-      },
-      required: ["slug", "key"],
-    },
-  },
-
   // Database
   {
-    name: "vibekit_db_status",
-    description: "Get database status for an app (tables, size, connections).",
+    name: "vibekit_enable_database",
+    description: "Enable database for a hosted app.",
     inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_db_schema",
-    description: "Get database schema — tables, columns, types, foreign keys.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-  {
-    name: "vibekit_db_query",
-    description: "Run a read-only SQL query against an app's database.",
-    inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        sql: { type: "string", description: "SQL query (SELECT only)" },
+        appId: {
+          type: "string",
+          description: "The app ID to enable database for",
+        },
       },
-      required: ["slug", "sql"],
+      required: ["appId"],
     },
   },
   {
-    name: "vibekit_db_table",
-    description: "Browse data in a specific table.",
+    name: "vibekit_database_status",
+    description: "Get database status and connection info for an app.",
     inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        table: { type: "string", description: "Table name" },
-        limit: { type: "number", description: "Max rows (default 20)" },
+        appId: {
+          type: "string",
+          description: "The app ID to get database status for",
+        },
       },
-      required: ["slug", "table"],
+      required: ["appId"],
     },
   },
-
-  // Files
-  {
-    name: "vibekit_files",
-    description: "Browse workspace files for an app.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        path: { type: "string", description: "Directory path (default: root)" },
-      },
-      required: ["slug"],
-    },
-  },
-
   // QA
   {
-    name: "vibekit_qa",
-    description: "Run a QA audit on an app — checks for bugs, accessibility, performance issues.",
+    name: "vibekit_run_qa",
+    description: "Run automated QA tests on a hosted app.",
     inputSchema: {
-      type: "object" as const,
-      properties: { slug: { type: "string", description: "App subdomain slug" } },
-      required: ["slug"],
-    },
-  },
-
-  // Domain
-  {
-    name: "vibekit_set_domain",
-    description: "Set a custom domain for an app.",
-    inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        slug: { type: "string", description: "App subdomain slug" },
-        domain: { type: "string", description: "Custom domain (e.g. myapp.com)" },
+        appId: {
+          type: "string",
+          description: "The app ID to run QA tests for",
+        },
       },
-      required: ["slug", "domain"],
+      required: ["appId"],
     },
   },
-
-  // Tasks (headless API)
+  {
+    name: "vibekit_qa_status",
+    description: "Get QA test results and status for an app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: {
+          type: "string",
+          description: "The app ID to get QA status for",
+        },
+      },
+      required: ["appId"],
+    },
+  },
+  // Tasks (existing)
   {
     name: "vibekit_submit_task",
-    description: "Submit a coding task. An AI agent will build code and deploy it.",
+    description: "Submit a coding task to VibeKit. The AI will write code, commit to GitHub, and deploy to {subdomain}.vibekit.bot. Returns a task ID to poll for results.",
     inputSchema: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        task: { type: "string", description: "What to build or change" },
-        repo: { type: "string", description: "GitHub repo (owner/repo)" },
-        branch: { type: "string", description: "Branch (default: main)" },
+        task: {
+          type: "string",
+          description: "What you want built or changed. Be specific about features, design, and behavior.",
+        },
+        repo: {
+          type: "string",
+          description: "GitHub repo in format 'owner/repo'. Optional — will use user's current repo if not specified.",
+        },
+        branch: {
+          type: "string",
+          description: "Git branch to work on. Default: main",
+        },
+        deploy: {
+          type: "boolean",
+          description: "Auto-deploy to Vercel when done. Default: true",
+        },
+        callbackUrl: {
+          type: "string",
+          description: "Webhook URL to receive task completion notification.",
+        },
       },
       required: ["task"],
     },
   },
   {
-    name: "vibekit_task_status",
-    description: "Check status of a submitted task.",
+    name: "vibekit_get_task",
+    description: "Get the status and result of a previously submitted task.",
     inputSchema: {
-      type: "object" as const,
-      properties: { taskId: { type: "string", description: "Task ID" } },
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "The task ID returned from vibekit_submit_task",
+        },
+      },
       required: ["taskId"],
+    },
+  },
+  {
+    name: "vibekit_list_tasks",
+    description: "List recent tasks submitted to VibeKit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Max number of tasks to return. Default: 10",
+        },
+        status: {
+          type: "string",
+          enum: ["pending", "running", "completed", "failed"],
+          description: "Filter by status",
+        },
+      },
+    },
+  },
+  {
+    name: "vibekit_wait_for_task",
+    description: "Wait for a task to complete and return the result. Polls every 5 seconds up to the timeout.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "The task ID to wait for",
+        },
+        timeoutSeconds: {
+          type: "number",
+          description: "Max seconds to wait. Default: 300 (5 minutes)",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+  {
+    name: "vibekit_create_schedule",
+    description: "Create a scheduled recurring task. The AI will run this task automatically on the specified schedule.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task: {
+          type: "string",
+          description: "What to do on each run. e.g., 'Improve SEO and page speed'",
+        },
+        repo: {
+          type: "string",
+          description: "GitHub repo in format 'owner/repo'",
+        },
+        cron: {
+          type: "string",
+          description: "Cron expression. e.g., '0 9 * * 1' for every Monday at 9am UTC",
+        },
+        name: {
+          type: "string",
+          description: "Friendly name for the schedule",
+        },
+      },
+      required: ["task", "repo", "cron"],
+    },
+  },
+  {
+    name: "vibekit_list_schedules",
+    description: "List all scheduled tasks.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "vibekit_delete_schedule",
+    description: "Delete a scheduled task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scheduleId: {
+          type: "string",
+          description: "The schedule ID to delete",
+        },
+      },
+      required: ["scheduleId"],
+    },
+  },
+  // Account
+  {
+    name: "vibekit_account",
+    description: "Get VibeKit account info including plan, credits balance, and usage.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "vibekit_list_skills",
+    description: "List all available implementation skills. Returns skill IDs, names, descriptions, and tags. Use this to discover what skills are available before fetching specific ones.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tag: {
+          type: "string",
+          description: "Filter skills by tag (e.g., 'react', 'database', 'security')",
+        },
+      },
+    },
+  },
+  {
+    name: "vibekit_get_skill",
+    description: "Fetch the full content of a specific skill. Skills contain implementation patterns, code examples, and best practices for a domain. Fetch skills on-demand when you need guidance on a specific topic.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Skill ID from vibekit_list_skills (e.g., 'nextjs', 'trpc', 'auth')",
+        },
+      },
+      required: ["id"],
     },
   },
 ];
 
-// ── Tool Handlers ───────────────────────────────────────────────────────────
-
-async function handleTool(name: string, args: Record<string, any>) {
-  let result: { ok: boolean; data?: any; error?: string };
-  const s = args.slug;
-  const h = `/hosting/app/${s}`;
+// Tool handlers
+async function handleTool(
+  name: string,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  let result: { ok: boolean; data?: unknown; error?: string };
 
   switch (name) {
-    case "vibekit_account":       result = await api("GET", "/account"); break;
-    case "vibekit_list_apps":     result = await api("GET", "/hosting/apps"); break;
-    case "vibekit_app_info":      result = await api("GET", h); break;
-    case "vibekit_chat":          result = await api("POST", `${h}/agent`, { message: args.message }); break;
-    case "vibekit_agent_status":  result = await api("GET", `${h}/agent/status`); break;
-    case "vibekit_deploy":        result = await api("POST", `${h}/redeploy`); break;
-    case "vibekit_deploys":       result = await api("GET", `${h}/deploys`); break;
-    case "vibekit_rollback":      result = await api("POST", `${h}/deploys/${args.deployId}/rollback`); break;
-    case "vibekit_logs":          result = await api("GET", `${h}/logs?lines=${args.lines || 50}`); break;
-    case "vibekit_start":         result = await api("POST", `${h}/start`); break;
-    case "vibekit_stop":          result = await api("POST", `${h}/stop`); break;
-    case "vibekit_restart":       result = await api("POST", `${h}/restart`); break;
-    case "vibekit_env_list":      result = await api("GET", `${h}/env${args.reveal ? '?reveal=true' : ''}`); break;
-    case "vibekit_env_set":       result = await api("POST", `${h}/env`, { vars: { [args.key]: args.value } }); break;
-    case "vibekit_env_delete":    result = await api("DELETE", `${h}/env/${args.key}`); break;
-    case "vibekit_db_status":     result = await api("GET", `${h}/database`); break;
-    case "vibekit_db_schema":     result = await api("GET", `${h}/database/schema`); break;
-    case "vibekit_db_query":      result = await api("POST", `${h}/database/query`, { sql: args.sql }); break;
-    case "vibekit_db_table":      result = await api("GET", `${h}/database/tables/${args.table}?limit=${args.limit || 20}`); break;
-    case "vibekit_files":         result = await api("GET", `${h}/agent/files${args.path ? `?path=${encodeURIComponent(args.path)}` : ''}`); break;
-    case "vibekit_qa":            result = await api("POST", `${h}/qa`); break;
-    case "vibekit_set_domain":    result = await api("POST", `${h}/domain`, { domain: args.domain }); break;
-    case "vibekit_submit_task":   result = await api("POST", "/task", { prompt: args.task, repo: args.repo, branch: args.branch }); break;
-    case "vibekit_task_status":   result = await api("GET", `/task/${args.taskId}`); break;
-    default: result = { ok: false, error: `Unknown tool: ${name}` };
+    // Hosting & Apps
+    case "vibekit_list_apps":
+      result = await apiRequest("GET", "/hosting/apps");
+      break;
+
+    case "vibekit_get_app":
+      result = await apiRequest("GET", `/hosting/app/${args.appId}`);
+      break;
+
+    case "vibekit_create_app":
+      result = await apiRequest("POST", "/hosting/apps", {
+        template: args.template,
+        subdomain: args.subdomain,
+      });
+      break;
+
+    case "vibekit_deploy":
+      result = await apiRequest("POST", "/hosting/deploy", {
+        repo: args.repo,
+        subdomain: args.subdomain,
+      });
+      break;
+
+    case "vibekit_redeploy":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/redeploy`);
+      break;
+
+    case "vibekit_app_logs": {
+      let path = `/hosting/app/${args.appId}/logs`;
+      if (args.lines) {
+        path += `?lines=${args.lines}`;
+      } else {
+        path += "?lines=100";
+      }
+      result = await apiRequest("GET", path);
+      break;
+    }
+
+    case "vibekit_restart_app":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/restart`);
+      break;
+
+    case "vibekit_stop_app":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/stop`);
+      break;
+
+    case "vibekit_start_app":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/start`);
+      break;
+
+    case "vibekit_app_env":
+      result = await apiRequest("GET", `/hosting/app/${args.appId}/env`);
+      break;
+
+    case "vibekit_set_env":
+      result = await apiRequest("PUT", `/hosting/app/${args.appId}/env`, {
+        vars: args.vars,
+      });
+      break;
+
+    case "vibekit_delete_app":
+      result = await apiRequest("DELETE", `/hosting/app/${args.appId}`);
+      break;
+
+    // AI Agent
+    case "vibekit_chat":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/agent`, {
+        message: args.message,
+      });
+      break;
+
+    case "vibekit_agent_status":
+      result = await apiRequest("GET", `/hosting/app/${args.appId}/agent/status`);
+      break;
+
+    case "vibekit_agent_history": {
+      let path = `/hosting/app/${args.appId}/agent/history`;
+      if (args.limit) {
+        path += `?limit=${args.limit}`;
+      } else {
+        path += "?limit=20";
+      }
+      result = await apiRequest("GET", path);
+      break;
+    }
+
+    // Database
+    case "vibekit_enable_database":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/database`);
+      break;
+
+    case "vibekit_database_status":
+      result = await apiRequest("GET", `/hosting/app/${args.appId}/database`);
+      break;
+
+    // QA
+    case "vibekit_run_qa":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/qa`);
+      break;
+
+    case "vibekit_qa_status":
+      result = await apiRequest("GET", `/hosting/app/${args.appId}/qa`);
+      break;
+
+    // Tasks (existing)
+    case "vibekit_submit_task":
+      result = await apiRequest("POST", "/task", {
+        task: args.task,
+        repo: args.repo,
+        branch: args.branch,
+        deploy: args.deploy ?? true,
+        callbackUrl: args.callbackUrl,
+      });
+      break;
+
+    case "vibekit_get_task":
+      result = await apiRequest("GET", `/task/${args.taskId}`);
+      break;
+
+    case "vibekit_list_tasks": {
+      let path = "/tasks";
+      const params = new URLSearchParams();
+      if (args.limit) params.set("limit", String(args.limit));
+      if (args.status) params.set("status", String(args.status));
+      if (params.toString()) path += `?${params.toString()}`;
+      result = await apiRequest("GET", path);
+      break;
+    }
+
+    case "vibekit_wait_for_task": {
+      const taskId = args.taskId as string;
+      const timeout = ((args.timeoutSeconds as number) || 300) * 1000;
+      const start = Date.now();
+      
+      while (Date.now() - start < timeout) {
+        result = await apiRequest("GET", `/task/${taskId}`);
+        if (!result.ok) break;
+        
+        const task = result.data as { status: string };
+        if (task.status === "completed" || task.status === "failed") {
+          break;
+        }
+        
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+      
+      if (!result!) {
+        result = { ok: false, error: "Timeout waiting for task" };
+      }
+      break;
+    }
+
+    case "vibekit_create_schedule":
+      result = await apiRequest("POST", "/schedule", {
+        task: args.task,
+        repo: args.repo,
+        cron: args.cron,
+        name: args.name,
+      });
+      break;
+
+    case "vibekit_list_schedules":
+      result = await apiRequest("GET", "/schedules");
+      break;
+
+    case "vibekit_delete_schedule":
+      result = await apiRequest("DELETE", `/schedule/${args.scheduleId}`);
+      break;
+
+    // Account
+    case "vibekit_account":
+      result = await apiRequest("GET", "/account");
+      break;
+
+    case "vibekit_list_skills": {
+      try {
+        // Check cache
+        if (skillsCache && Date.now() - skillsCache.fetchedAt < CACHE_TTL) {
+          let skills = (skillsCache.manifest as { skills: Array<{ tags?: string[] }> }).skills;
+          if (args.tag) {
+            skills = skills.filter((s) => s.tags?.includes(args.tag as string));
+          }
+          result = { ok: true, data: { skills } };
+          break;
+        }
+
+        // Fetch manifest
+        const res = await fetch(`${SKILLS_REGISTRY}/skills.json`);
+        if (!res.ok) {
+          result = { ok: false, error: `Failed to fetch skills: ${res.status}` };
+          break;
+        }
+        const manifest = await res.json();
+        skillsCache = { manifest, fetchedAt: Date.now() };
+
+        let skills = manifest.skills;
+        if (args.tag) {
+          skills = skills.filter((s: { tags?: string[] }) => s.tags?.includes(args.tag as string));
+        }
+        result = { ok: true, data: { skills, count: skills.length } };
+      } catch (err) {
+        result = { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+      }
+      break;
+    }
+
+    case "vibekit_get_skill": {
+      try {
+        const id = args.id as string;
+        if (!id) {
+          result = { ok: false, error: "Skill ID is required" };
+          break;
+        }
+
+        const res = await fetch(`${SKILLS_REGISTRY}/skills/${id}/SKILL.md`);
+        if (!res.ok) {
+          result = { ok: false, error: `Skill '${id}' not found (${res.status})` };
+          break;
+        }
+
+        const content = await res.text();
+        result = { ok: true, data: { id, content } };
+      } catch (err) {
+        result = { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+      }
+      break;
+    }
+
+    default:
+      result = { ok: false, error: `Unknown tool: ${name}` };
   }
 
-  const text = result.ok ? JSON.stringify(result.data, null, 2) : `Error: ${result.error}`;
-  return { content: [{ type: "text" as const, text }] };
+  const text = result.ok
+    ? JSON.stringify(result.data, null, 2)
+    : `Error: ${result.error}`;
+
+  return { content: [{ type: "text", text }] };
 }
 
-// ── Server ──────────────────────────────────────────────────────────────────
-
+// Main server setup
 const server = new Server(
-  { name: "vibekit-mcp", version: "0.3.0" },
-  { capabilities: { tools: {} } }
+  {
+    name: "vibekit-mcp",
+    version: "0.4.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+// Handle tool listing
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools,
+}));
+
+// Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  return handleTool(name, (args || {}) as Record<string, any>);
+  return handleTool(name, (args || {}) as Record<string, unknown>);
 });
 
+// Start server
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("VibeKit MCP server running on stdio");
 }
 
-main().catch((err) => { console.error("Fatal:", err); process.exit(1); });
+main().catch((err) => {
+  console.error("Fatal error:", err);
+  process.exit(1);
+});
