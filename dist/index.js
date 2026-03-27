@@ -38,9 +38,298 @@ async function apiRequest(method, path, body) {
 }
 // Tool definitions
 const tools = [
+    // Hosting & Apps
+    {
+        name: "vibekit_list_apps",
+        description: "List all hosted apps in your VibeKit account.",
+        inputSchema: {
+            type: "object",
+            properties: {},
+        },
+    },
+    {
+        name: "vibekit_get_app",
+        description: "Get details about a specific hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get details for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_create_app",
+        description: "Create a new hosted app from a template.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                template: {
+                    type: "string",
+                    description: "Template to use (e.g., 'nextjs', 'react', 'express')",
+                },
+                subdomain: {
+                    type: "string",
+                    description: "Subdomain for the app (will be deployed to {subdomain}.vibekit.bot)",
+                },
+            },
+            required: ["template", "subdomain"],
+        },
+    },
+    {
+        name: "vibekit_deploy",
+        description: "Deploy a GitHub repo to VibeKit hosting.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                repo: {
+                    type: "string",
+                    description: "GitHub repo in format 'owner/repo'",
+                },
+                subdomain: {
+                    type: "string",
+                    description: "Subdomain for the app (will be deployed to {subdomain}.vibekit.bot)",
+                },
+            },
+            required: ["repo", "subdomain"],
+        },
+    },
+    {
+        name: "vibekit_redeploy",
+        description: "Redeploy an existing hosted app to update it with latest code.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to redeploy",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_app_logs",
+        description: "Get application logs for debugging and monitoring.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get logs for",
+                },
+                lines: {
+                    type: "number",
+                    description: "Number of log lines to retrieve (default: 100)",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_restart_app",
+        description: "Restart a hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to restart",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_stop_app",
+        description: "Stop a hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to stop",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_start_app",
+        description: "Start a stopped hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to start",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_app_env",
+        description: "Get environment variables for a hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get environment variables for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_set_env",
+        description: "Set environment variables for a hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to set environment variables for",
+                },
+                vars: {
+                    type: "object",
+                    description: "Object of key-value pairs to set as environment variables",
+                },
+            },
+            required: ["appId", "vars"],
+        },
+    },
+    {
+        name: "vibekit_delete_app",
+        description: "Delete a hosted app permanently.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to delete",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    // AI Agent
+    {
+        name: "vibekit_chat",
+        description: "Chat with an app's AI agent. The agent can read, write, and modify the app's code.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to chat with the agent for",
+                },
+                message: {
+                    type: "string",
+                    description: "Message to send to the AI agent",
+                },
+            },
+            required: ["appId", "message"],
+        },
+    },
+    {
+        name: "vibekit_agent_status",
+        description: "Get the status of an app's AI agent.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get agent status for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_agent_history",
+        description: "Get chat history with an app's AI agent.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get agent history for",
+                },
+                limit: {
+                    type: "number",
+                    description: "Maximum number of messages to return (default: 20)",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    // Database
+    {
+        name: "vibekit_enable_database",
+        description: "Enable database for a hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to enable database for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_database_status",
+        description: "Get database status and connection info for an app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get database status for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    // QA
+    {
+        name: "vibekit_run_qa",
+        description: "Run automated QA tests on a hosted app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to run QA tests for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    {
+        name: "vibekit_qa_status",
+        description: "Get QA test results and status for an app.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                appId: {
+                    type: "string",
+                    description: "The app ID to get QA status for",
+                },
+            },
+            required: ["appId"],
+        },
+    },
+    // Tasks (existing)
     {
         name: "vibekit_submit_task",
-        description: "Submit a coding task to VibeKit. The AI will write code, commit to GitHub, and deploy to Vercel. Returns a task ID to poll for results.",
+        description: "Submit a coding task to VibeKit. The AI will write code, commit to GitHub, and deploy to {subdomain}.vibekit.bot. Returns a task ID to poll for results.",
         inputSchema: {
             type: "object",
             properties: {
@@ -166,6 +455,7 @@ const tools = [
             required: ["scheduleId"],
         },
     },
+    // Account
     {
         name: "vibekit_account",
         description: "Get VibeKit account info including plan, credits balance, and usage.",
@@ -206,6 +496,94 @@ const tools = [
 async function handleTool(name, args) {
     let result;
     switch (name) {
+        // Hosting & Apps
+        case "vibekit_list_apps":
+            result = await apiRequest("GET", "/hosting/apps");
+            break;
+        case "vibekit_get_app":
+            result = await apiRequest("GET", `/hosting/app/${args.appId}`);
+            break;
+        case "vibekit_create_app":
+            result = await apiRequest("POST", "/hosting/apps", {
+                template: args.template,
+                subdomain: args.subdomain,
+            });
+            break;
+        case "vibekit_deploy":
+            result = await apiRequest("POST", "/hosting/deploy", {
+                repo: args.repo,
+                subdomain: args.subdomain,
+            });
+            break;
+        case "vibekit_redeploy":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/redeploy`);
+            break;
+        case "vibekit_app_logs": {
+            let path = `/hosting/app/${args.appId}/logs`;
+            if (args.lines) {
+                path += `?lines=${args.lines}`;
+            }
+            else {
+                path += "?lines=100";
+            }
+            result = await apiRequest("GET", path);
+            break;
+        }
+        case "vibekit_restart_app":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/restart`);
+            break;
+        case "vibekit_stop_app":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/stop`);
+            break;
+        case "vibekit_start_app":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/start`);
+            break;
+        case "vibekit_app_env":
+            result = await apiRequest("GET", `/hosting/app/${args.appId}/env`);
+            break;
+        case "vibekit_set_env":
+            result = await apiRequest("PUT", `/hosting/app/${args.appId}/env`, {
+                vars: args.vars,
+            });
+            break;
+        case "vibekit_delete_app":
+            result = await apiRequest("DELETE", `/hosting/app/${args.appId}`);
+            break;
+        // AI Agent
+        case "vibekit_chat":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/agent`, {
+                message: args.message,
+            });
+            break;
+        case "vibekit_agent_status":
+            result = await apiRequest("GET", `/hosting/app/${args.appId}/agent/status`);
+            break;
+        case "vibekit_agent_history": {
+            let path = `/hosting/app/${args.appId}/agent/history`;
+            if (args.limit) {
+                path += `?limit=${args.limit}`;
+            }
+            else {
+                path += "?limit=20";
+            }
+            result = await apiRequest("GET", path);
+            break;
+        }
+        // Database
+        case "vibekit_enable_database":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/database`);
+            break;
+        case "vibekit_database_status":
+            result = await apiRequest("GET", `/hosting/app/${args.appId}/database`);
+            break;
+        // QA
+        case "vibekit_run_qa":
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/qa`);
+            break;
+        case "vibekit_qa_status":
+            result = await apiRequest("GET", `/hosting/app/${args.appId}/qa`);
+            break;
+        // Tasks (existing)
         case "vibekit_submit_task":
             result = await apiRequest("POST", "/task", {
                 task: args.task,
@@ -263,6 +641,7 @@ async function handleTool(name, args) {
         case "vibekit_delete_schedule":
             result = await apiRequest("DELETE", `/schedule/${args.scheduleId}`);
             break;
+        // Account
         case "vibekit_account":
             result = await apiRequest("GET", "/account");
             break;
@@ -327,7 +706,7 @@ async function handleTool(name, args) {
 // Main server setup
 const server = new index_js_1.Server({
     name: "vibekit-mcp",
-    version: "0.1.0",
+    version: "0.4.0",
 }, {
     capabilities: {
         tools: {},
