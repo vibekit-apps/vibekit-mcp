@@ -525,8 +525,8 @@ const tools = [
                 limit: { type: "number", description: "Max tasks to return (default: 10)" },
                 status: {
                     type: "string",
-                    enum: ["pending", "running", "completed", "failed"],
-                    description: "Filter by status",
+                    enum: ["pending", "running", "complete", "failed"],
+                    description: "Filter by status. Note: completed tasks have status 'complete' (not 'completed')",
                 },
             },
         },
@@ -758,8 +758,8 @@ async function handleTool(name, args) {
         case "vibekit_create_app_schedule":
             result = await apiRequest("POST", `/hosting/app/${args.appId}/schedules`, {
                 name: args.name,
-                cron: args.cron,
-                task: args.task,
+                cron_expression: args.cron, // API field is "cron_expression", not "cron"
+                prompt: args.task, // API field is "prompt", not "task"
             });
             break;
         case "vibekit_delete_app_schedule":
@@ -768,7 +768,7 @@ async function handleTool(name, args) {
         // Tasks
         case "vibekit_submit_task":
             result = await apiRequest("POST", "/task", {
-                task: args.task,
+                prompt: args.task, // API field is "prompt", not "task"
                 repo: args.repo,
                 branch: args.branch,
                 deploy: args.deploy ?? true,
@@ -801,7 +801,7 @@ async function handleTool(name, args) {
                 }
                 const task = poll.data;
                 result = poll;
-                if (task.status === "completed" || task.status === "failed")
+                if (task.status === "complete" || task.status === "completed" || task.status === "failed")
                     break;
                 await new Promise((r) => setTimeout(r, 5000));
             }
