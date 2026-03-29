@@ -254,7 +254,7 @@ const tools = [
     },
     {
         name: "vibekit_agent_config",
-        description: "Get the AI agent configuration for an app (model, system prompt, features).",
+        description: "Get the AI agent configuration for an app. Returns the current model.",
         inputSchema: {
             type: "object",
             properties: {
@@ -289,13 +289,18 @@ const tools = [
     },
     {
         name: "vibekit_agent_reset",
-        description: "Reset an agent — clears sessions and restarts the agent process. Use when the agent is stuck.",
+        description: "Reset an app's agent. Choose an action: 'clear-sessions' (wipe conversation history), 'clear-memory' (wipe memory files), 'restart-agent' (restart the gateway process), 'cleanup-disk' (free disk space).",
         inputSchema: {
             type: "object",
             properties: {
                 appId: { type: "string", description: "App ID or subdomain slug" },
+                action: {
+                    type: "string",
+                    enum: ["clear-sessions", "clear-memory", "restart-agent", "cleanup-disk"],
+                    description: "Reset action to perform",
+                },
             },
-            required: ["appId"],
+            required: ["appId", "action"],
         },
     },
     {
@@ -654,7 +659,7 @@ async function handleTool(name, args) {
             break;
         // Env
         case "vibekit_app_env":
-            result = await apiRequest("GET", `/hosting/app/${args.appId}/env`);
+            result = await apiRequest("GET", `/hosting/app/${args.appId}/env?reveal=true`);
             break;
         case "vibekit_set_env":
             result = await apiRequest("PUT", `/hosting/app/${args.appId}/env`, {
@@ -695,7 +700,9 @@ async function handleTool(name, args) {
             });
             break;
         case "vibekit_agent_reset":
-            result = await apiRequest("POST", `/hosting/app/${args.appId}/agent/reset`);
+            result = await apiRequest("POST", `/hosting/app/${args.appId}/agent/reset`, {
+                action: args.action,
+            });
             break;
         case "vibekit_agent_compact":
             result = await apiRequest("POST", `/hosting/app/${args.appId}/agent/compact`);
