@@ -1,20 +1,20 @@
 # vibekit-mcp
 
-MCP server for VibeKit — deploy apps, manage hosting, and chat with AI agents from any MCP client.
+MCP server for VibeKit — control your hosted apps, AI agents, and deployments from Claude Desktop, Cursor, or any MCP client.
 
-## Installation
+## Quick Start
+
+**1. Install**
 
 ```bash
 npm install -g vibekit-mcp
 ```
 
-## Setup
+**2. Get an API key**
 
-1. Get a VibeKit API key:
-   - Open [@the_vibe_kit_bot](https://t.me/the_vibe_kit_bot) in Telegram
-   - Send `/apikey` to generate your key
+Go to [app.vibekit.bot](https://app.vibekit.bot) → Settings → API Keys, or via Telegram: [@the_vibe_kit_bot](https://t.me/the_vibe_kit_bot) → `/apikey`
 
-2. Add to your MCP client config (e.g. Claude Desktop) (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+**3. Add to Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
@@ -29,80 +29,134 @@ npm install -g vibekit-mcp
 }
 ```
 
-3. Restart your MCP client
+**4. Restart your MCP client** and start building.
 
-## Available Tools
+---
 
-### Hosting
+## What You Can Do
+
+### Apps
 
 | Tool | Description |
 |------|-------------|
-| `vibekit_list_apps` | List all hosted apps |
-| `vibekit_get_app` | Get details about a specific app |
-| `vibekit_create_app` | Create new app from template |
-| `vibekit_deploy` | Deploy GitHub repo to hosting |
-| `vibekit_redeploy` | Redeploy app with latest code |
-| `vibekit_app_logs` | Get application logs |
+| `vibekit_list_apps` | List all your hosted apps |
+| `vibekit_get_app` | Get app details (status, URL, memory, uptime) |
+| `vibekit_create_app` | Create a new app from a template |
+| `vibekit_deploy` | Deploy a GitHub repo |
+| `vibekit_redeploy` | Redeploy with latest code |
+| `vibekit_rollback` | Roll back to a previous snapshot |
+| `vibekit_deploy_history` | List deployment snapshots |
+| `vibekit_app_logs` | Get runtime logs |
 | `vibekit_restart_app` | Restart an app |
 | `vibekit_stop_app` | Stop an app |
 | `vibekit_start_app` | Start a stopped app |
-| `vibekit_app_env` | Get app environment variables |
-| `vibekit_set_env` | Set app environment variables |
-| `vibekit_delete_app` | Delete an app permanently |
+| `vibekit_delete_app` | Permanently delete an app |
+| `vibekit_exec` | Run a shell command inside a running container |
 
-### Agent
+### Environment Variables
 
 | Tool | Description |
 |------|-------------|
-| `vibekit_chat` | Chat with an app's AI agent |
-| `vibekit_agent_status` | Get agent status |
-| `vibekit_agent_history` | Get chat history with agent |
+| `vibekit_app_env` | Get env vars (values revealed) |
+| `vibekit_set_env` | Set one or more env vars |
+| `vibekit_delete_env` | Delete a specific env var |
+
+### AI Agent
+
+| Tool | Description |
+|------|-------------|
+| `vibekit_chat` | Send a message to an app's AI agent |
+| `vibekit_agent_status` | Check if agent is idle or running |
+| `vibekit_agent_stop` | Stop a running agent request |
+| `vibekit_agent_history` | Get conversation history |
+| `vibekit_agent_config` | Get current model config |
+| `vibekit_agent_set_model` | Change model (`claude-opus-4-6`, `claude-sonnet-4-20250514`, `claude-haiku-3.5`) |
+| `vibekit_agent_reset` | Reset agent (clear sessions, memory, restart, or cleanup disk) |
+| `vibekit_agent_compact` | Compact agent memory to free context |
+
+### Files
+
+| Tool | Description |
+|------|-------------|
+| `vibekit_list_files` | List files in the workspace |
+| `vibekit_read_file` | Read a file's contents |
+| `vibekit_write_file` | Write or update a file |
+| `vibekit_file_changes` | See uncommitted file changes |
 
 ### Database
 
 | Tool | Description |
 |------|-------------|
-| `vibekit_enable_database` | Enable database for an app |
-| `vibekit_database_status` | Get database status and connection info |
+| `vibekit_enable_database` | Provision a Postgres database |
+| `vibekit_database_status` | Connection info and stats |
+| `vibekit_database_schema` | Get tables and columns |
+| `vibekit_database_query` | Run a SQL query |
+
+### Custom Domains
+
+| Tool | Description |
+|------|-------------|
+| `vibekit_add_domain` | Add a custom domain |
+| `vibekit_remove_domain` | Remove a custom domain |
 
 ### QA
 
 | Tool | Description |
 |------|-------------|
 | `vibekit_run_qa` | Run automated QA tests |
-| `vibekit_qa_status` | Get QA test results |
+| `vibekit_qa_status` | Get latest QA results |
 
-### Tasks
+### Cron Schedules (per app)
 
 | Tool | Description |
 |------|-------------|
-| `vibekit_submit_task` | Submit a coding task |
-| `vibekit_get_task` | Get task status/result |
+| `vibekit_app_schedules` | List cron jobs for an app |
+| `vibekit_create_app_schedule` | Create a cron job |
+| `vibekit_delete_app_schedule` | Delete a cron job |
+
+### Async Coding Tasks
+
+| Tool | Description |
+|------|-------------|
+| `vibekit_submit_task` | Submit an async coding task (GitHub-based) |
+| `vibekit_get_task` | Get task status and result |
 | `vibekit_list_tasks` | List recent tasks |
-| `vibekit_wait_for_task` | Wait for task completion |
-| `vibekit_create_schedule` | Create recurring scheduled task |
-| `vibekit_list_schedules` | List scheduled tasks |
-| `vibekit_delete_schedule` | Delete scheduled task |
+| `vibekit_wait_for_task` | Poll until task completes |
+| `vibekit_create_schedule` | Create a recurring coding task |
+| `vibekit_list_schedules` | List recurring schedules |
+| `vibekit_delete_schedule` | Delete a schedule |
 
-### Account
+### Account & Skills
 
 | Tool | Description |
 |------|-------------|
-| `vibekit_account` | Get account info (plan, credits, usage) |
-| `vibekit_list_skills` | List implementation skills |
-| `vibekit_get_skill` | Fetch specific skill content |
+| `vibekit_account` | Plan, credits, and usage |
+| `vibekit_list_skills` | Browse implementation skills |
+| `vibekit_get_skill` | Fetch a skill's full content |
 
-## Example Usage
+---
 
-Once configured, you can use prompts like:
+## Example Prompts
 
-- "Deploy my GitHub repo to VibeKit and create a new app"
-- "Chat with the AI agent for my app about adding a contact form"
-- "Show me the logs for my app and restart it if there are errors"
-- "Enable a database for my app and check its status"
-- "Run QA tests on my deployed app"
-- "Check my VibeKit account balance and list my apps"
-- "Create a weekly schedule to improve my app's performance"
+```
+"List my apps and show the logs for the one that's erroring"
+
+"Chat with the agent on my 'dogs' app — ask it to add a dark mode toggle"
+
+"Read the server.js file from my app and tell me what it does"
+
+"Run a SQL query on my app's database: SELECT COUNT(*) FROM users"
+
+"Redeploy my app, then run QA and show me the results"
+
+"Roll back my app to the previous deployment"
+
+"Set DATABASE_URL and STRIPE_SECRET as env vars on my app, then restart it"
+
+"Check my account balance and show how many sessions I've used this month"
+```
+
+---
 
 ## Environment Variables
 
@@ -111,9 +165,11 @@ Once configured, you can use prompts like:
 | `VIBEKIT_API_KEY` | Your VibeKit API key (required) | — |
 | `VIBEKIT_API_URL` | API base URL | `https://vibekit.bot/api/v1` |
 
+---
+
 ## Links
 
-- [VibeKit Website](https://vibekit.bot)
-- [API Documentation](https://vibekit.bot/SKILL.md)
-- [Get API Key](https://t.me/the_vibe_kit_bot)
+- [Dashboard](https://app.vibekit.bot)
+- [Website](https://vibekit.bot)
+- [API Docs](https://vibekit.bot/SKILL.md)
 - [GitHub](https://github.com/609NFT/vibekit)
