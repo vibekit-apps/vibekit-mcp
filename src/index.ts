@@ -280,16 +280,27 @@ const tools: Tool[] = [
     },
   },
   {
-    name: "vibekit_agent_set_config",
-    description: "Update the AI agent configuration for an app.",
+    name: "vibekit_agent_set_model",
+    description: "Change the AI model used by an app's agent.",
     inputSchema: {
       type: "object",
       properties: {
         appId: { type: "string", description: "App ID or subdomain slug" },
-        model: { type: "string", description: "Model to use, e.g. 'claude-opus-4-5', 'claude-sonnet-4-6'" },
-        systemPrompt: { type: "string", description: "Custom system prompt for the agent" },
+        model: { type: "string", description: "Model to use. Options: 'claude-opus-4-6', 'claude-sonnet-4-20250514', 'claude-haiku-3.5'" },
       },
-      required: ["appId"],
+      required: ["appId", "model"],
+    },
+  },
+  {
+    name: "vibekit_exec",
+    description: "Run a shell command inside an app's container. The app must be running. Useful for inspecting state, running migrations, or debugging.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appId: { type: "string", description: "App ID or subdomain slug" },
+        command: { type: "string", description: "Shell command to run, e.g. 'ls -la' or 'node -e \"console.log(process.env)\"'" },
+      },
+      required: ["appId", "command"],
     },
   },
   {
@@ -723,10 +734,15 @@ async function handleTool(
       result = await apiRequest("GET", `/hosting/app/${args.appId}/agent/config`);
       break;
 
-    case "vibekit_agent_set_config":
+    case "vibekit_agent_set_model":
       result = await apiRequest("POST", `/hosting/app/${args.appId}/agent/config`, {
         model: args.model,
-        systemPrompt: args.systemPrompt,
+      });
+      break;
+
+    case "vibekit_exec":
+      result = await apiRequest("POST", `/hosting/app/${args.appId}/exec`, {
+        command: args.command,
       });
       break;
 
